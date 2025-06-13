@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from ipywidgets import interact, FloatSlider
 
 # Sample data creation
@@ -11,6 +12,7 @@ stock2 = np.random.rand(len(dates))
 stock3 = np.random.rand(len(dates))
 sp500 = np.random.rand(len(dates))
 eurostoxx = np.random.rand(len(dates))
+secondary_index = np.random.rand(len(dates))  # Example secondary index
 
 data = pd.DataFrame({
     'Date': dates,
@@ -18,29 +20,59 @@ data = pd.DataFrame({
     'Stock2': stock2,
     'Stock3': stock3,
     'S&P500': sp500,
-    'EUROSTOXX': eurostoxx
+    'EUROSTOXX': eurostoxx,
+    'SecondaryIndex': secondary_index  # Add secondary index to the DataFrame
 })
 
 data.set_index('Date', inplace=True)
 
-# Function to calculate rolling correlation
-def rolling_correlation(stock, index, window):
-    return data[stock].rolling(window).corr(data[index])
+# Function to calculate returns
+def calculate_returns(data, frequency):
+    if frequency == 'Daily':
+        return data.pct_change().dropna()
+    elif frequency == 'Weekly':
+        return data.resample('W').ffill().pct_change().dropna()
 
-# Function to plot correlation
-def plot_correlation(stock, index, window):
-    correlation = rolling_correlation(stock, index, window)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=correlation.index, y=correlation, mode='lines', name=f'Correlation {stock} - {index}'))
+# Function to calculate rolling correlation
+def rolling_correlation(stock, index, window, frequency):
+    window = int(window)  # Convert window to integer
+    returns = calculate_returns(data[[stock, index]], frequency)
+    return returns[stock].rolling(window).corr(returns[index])
+
+# Function to plot correlation with subplots
+def plot_correlation(stock, index, secondary_index, window, frequency):
+    correlation = rolling_correlation(stock, index, window, frequency)
     
-    fig.update_layout(title=f'Rolling Correlation: {stock} with {index} (Window: {window})',
-                      xaxis_title='Date',
-                      yaxis_title='Correlation',
-                      template='plotly_white')
+    # Create subplots
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=(f'Rolling Correlation: {stock} with {index} ({frequency} Returns)', f'{stock} and {index} vs {secondary_index}')
+    )
+    
+    # Add correlation trace
+    fig.add_trace(go.Scatter(x=correlation.index, y=correlation, mode='lines', name='Correlation'), row=1, col=1)
+    
+    # Add stock and index traces
+    returns_data = calculate_returns(data[[stock, index, secondary_index]], frequency)
+    fig.add_trace(go.Scatter(x=returns_data.index, y=returns_data[stock], mode='lines', name=stock), row=2, col=1)
+    fig.add_trace(go.Scatter(x=returns_data.index, y=returns_data[index], mode='lines', name=index), row=2, col=1)
+    fig.add_trace(go.Scatter(x=returns_data.index, y=returns_data[secondary_index], mode='lines', name=secondary_index), row=2, col=1)
+
+    # Update layout
+    fig.update_layout(
+        title='Stock Analysis',
+        xaxis_title='Date',
+        yaxis_title='Correlation',
+        yaxis_range=[-1, 1],  # Set y-axis range for correlation
+        template='plotly_white'
+    )
+    
     fig.show()
 
 # Interactive widget
 interact(plot_correlation, 
          stock=['Stock1', 'Stock2', 'Stock3'], 
          index=['S&P500', 'EUROSTOXX'], 
-         window=FloatSlider(value=30, min=5, max=100, step=1, description='Rolling Window'));
+         secondary_index=['SecondaryIndex'],  # Dropdown for secondary index
+         window=FloatSlider(value=30, min=5, max=100, step=1, description='Rolling Window'),
+         frequency=['Daily', 'Weekly']);  # Dropdown for return frequency
