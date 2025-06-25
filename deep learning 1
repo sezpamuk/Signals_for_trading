@@ -1,0 +1,105 @@
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+import matplotlib.pyplot as plt
+
+# 1. Manufacture synthetic dataset
+np.random.seed(42)
+num_samples = 1000
+
+# Generate random features (hours attended and project hours)
+hours_attended = np.random.uniform(0, 100, num_samples)
+project_hours = np.random.uniform(0, 50, num_samples)
+
+# Create labels (pass = 1, fail = 0) with a logical rule
+pass_threshold = (hours_attended > 50) & (project_hours > 20)
+labels = np.where(pass_threshold, 1, 0).astype('float32')
+
+# Add 10% noise to labels
+noise_mask = np.random.random(num_samples) < 0.1
+labels[noise_mask] = 1 - labels[noise_mask]
+
+# Combine features into input array
+X = np.column_stack((hours_attended, project_hours))
+y = labels
+
+# 2. Split data (80% train, 20% test)
+split_idx = int(0.8 * num_samples)
+X_train, y_train = X[:split_idx], y[:split_idx]
+X_test, y_test = X[split_idx:], y[split_idx:]
+
+# 3. Build neural network
+model = Sequential([
+    Dense(8, activation='relu', input_shape=(2,)),
+    Dense(8, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+model.compile(
+    optimizer='adam',
+    loss='binary_crossentropy',
+    metrics=['accuracy']
+)
+
+# 4. Train the model
+history = model.fit(
+    X_train,
+    y_train,
+    epochs=100,
+    batch_size=32,
+    validation_split=0.2,
+    verbose=0
+)
+
+# 5. Evaluate on test set
+test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
+print(f"\nTest Accuracy: {test_acc:.2f}")
+
+# 6. Prediction for new students
+new_students = np.array([
+    [80.0, 35.0],  # High attendance & project (should pass)
+    [30.0, 10.0],  # Low both (should fail)
+    [60.0, 15.0],  # Borderline case (might fail)
+    [40.0, 30.0]   # Borderline case (might pass)
+])
+
+predictions = model.predict(new_students)
+pass_prob = predictions.flatten()
+
+print("\nPredictions for new students:")
+for i, student in enumerate(new_students):
+    print(f"Student {i+1}: {student} hrs → {'PASS' if pass_prob[i] > 0.5 else 'FAIL'} "
+          f"(Confidence: {pass_prob[i]:.2f})")
+
+# 7. Visualize decision boundary
+plt.figure(figsize=(12, 4))
+
+# Plot training history
+plt.subplot(131)
+plt.plot(history.history['accuracy'], label='Train Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.title('Training History')
+plt.ylabel('Accuracy')
+plt.xlabel('Epoch')
+plt.legend()
+
+# Plot data and decision boundary
+plt.subplot(132)
+xx, yy = np.meshgrid(np.linspace(0, 100, 100), np.linspace(0, 50, 100))
+Z = model.predict(np.c_[xx.ravel(), yy.ravel()])
+Z = Z.reshape(xx.shape) > 0.5
+
+plt.contourf(xx, yy, Z, alpha=0.3)
+plt.scatter(X_train[:,0], X_train[:,1], c=y_train, cmap='coolwarm', alpha=0.7)
+plt.title('Decision Boundary & Training Data')
+plt.xlabel('Attendance Hours')
+plt.ylabel('Project Hours')
+
+# Plot test results
+plt.subplot(133)
+plt.scatter(X_test[:,0], X_test[:,1], c=y_test, cmap='coolwarm', marker='x', alpha=0.7)
+plt.title('Test Data Predictions')
+plt.xlabel('Attendance Hours')
+plt.tight_layout()
+plt.show()
